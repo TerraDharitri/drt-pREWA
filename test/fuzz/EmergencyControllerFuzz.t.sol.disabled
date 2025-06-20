@@ -1,0 +1,180 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.28;
+
+import "forge-std/Test.sol";
+import "../../contracts/controllers/EmergencyController.sol";
+import "../../contracts/access/AccessControl.sol";
+import "../../contracts/mocks/MockIEmergencyAware.sol";
+
+contract EmergencyControllerFuzzTest is Test {
+    EmergencyController public ec;
+    AccessControl public ac;
+    MockIEmergencyAware public mockContract;
+    
+    address public admin;
+    address public emergencyRole;
+    address public pauserRole;
+    
+    function setUp() public {
+        admin = address(0x2001);
+        emergencyRole = address(0x2002);
+        pauserRole = address(0x2003);
+        
+        vm.startPrank(admin);
+        
+        ac = new AccessControl();
+        ac.initialize(admin);
+        
+        ec = new EmergencyController();
+        ec.initialize(
+            address(ac),
+            address(0), // No timelock controller
+            3, // Required approvals
+            1 days, // Timelock duration
+            admin // Recovery admin
+        );
+        
+        mockContract = new MockIEmergencyAware(admin);
+        
+        // Grant roles
+        ac.grantRole(ac.EMERGENCY_ROLE(), emergencyRole);
+        ac.grantRole(ac.PAUSER_ROLE(), pauserRole);
+        
+        vm.stopPrank();
+    }
+    
+    function testFuzz_SetEmergencyLevel(uint8 level) public {
+        vm.assume(level <= 3);
+        vm.assume(level != 3); // Level 3 requires approval process
+        
+        vm.prank(emergencyRole);
+        
+        if (level <= 2) {
+            bool success = ec.setEmergencyLevel(level);
+            assertTrue(success);
+            assertEq(ec.getEmergencyLevel(), level);
+        }
+    }
+    
+    function testFuzz_RequiredApprovals(uint256 approvals) public {
+        vm.assume(approvals > 0 && approvals <= ec.MAX_REQUIRED_APPROVALS());
+        
+        vm.prank(admin);
+        bool success = ec.setRequiredApprovals(approvals);
+        
+        assertTrue(success);
+        
+        // Verify approval status is reset
+        (uint256 currentCount,,,,,, ) = ec.getApprovalStatus(0, 10);
+        assertEq(currentCount, 0);
+    }
+    
+    function testFuzz_TimelockDuration(uint256 duration) public {
+        vm.assume(duration >= 1 hours && duration <= 30 days);
+        
+        vm.prank(admin);
+        bool success = ec.setLevel3TimelockDuration(duration);
+        
+        assertTrue(success);
+    }
+    
+    function testFuzz_EmergencyWithdrawalPenalty(uint256 penalty) public {
+        vm.assume(penalty <= 10000); // Max 100%
+        
+        vm.prank(emergencyRole);
+        bool success = ec.enableEmergencyWithdrawal(true, penalty);
+        
+        assertTrue(success);
+        
+        (bool enabled, uint256 actualPenalty) = ec.getEmergencyWithdrawalSettings();
+        assertTrue(enabled);
+        assertEq(actualPenalty, penalty);
+    }
+    
+    function testFuzz_RegisterEmergencyAwareContract(address contractAddr) public {
+        vm.assume(contractAddr != address(0));
+        vm.assume(contractAddr.code.length > 0 || contractAddr == address(mockContract));
+        
+        vm.prank(emergencyRole);
+        
+        if (contractAddr == address(mockContract)) {
+            bool success = ec.registerEmergencyAwareContract(contractAddr);
+            assertTrue(success);
+            
+            // Verify contract is registered
+            (address[] memory contracts, uint256 total) = ec.getEmergencyAwareContractsPaginated(0, 10);
+            assertEq(total, 1);
+            assertEq(contracts[0], contractAddr);
+        }
+    }
+    
+    function testFuzz_FunctionRestriction(bytes4 selector, uint8 threshold) public {
+        vm.assume(threshold <= 3);
+        
+        vm.prank(emergencyRole);
+        bool success = ec.updateFunctionRestriction(selector, threshold);
+        
+        assertTrue(success);
+        
+        // Test restriction logic
+        vm.prank(emergencyRole);
+        if (threshold > 0) {
+            ec.setEmergencyLevel(threshold);
+            assertTrue(ec.isFunctionRestricted(selector));
+        }
+    }
+    
+    function testFuzz_Level3ApprovalProcess(uint8 numApprovers) public {
+        vm.assume(numApprovers > 0 && numApprovers <= 10);
+        
+        // Set required approvals to numApprovers
+        vm.prank(admin);
+        ec.setRequiredApprovals(numApprovers);
+        
+        // Create approvers and submit approvals
+        for (uint8 i = 0; i < numApprovers; i++) {
+            address approver = makeAddr(string(abi.encodePacked("approver", i)));
+            vm.prank(admin);
+            ac.grantRole(ac.EMERGENCY_ROLE(), approver);
+            
+            vm.prank(approver);
+            bool success = ec.approveLevel3Emergency();
+            assertTrue(success);
+        }
+        
+        // Check if timelock started
+        (,, address[] memory approvers,, uint256 totalApprovers, bool timelockActive,) = ec.getApprovalStatus(0, 20);
+        assertEq(totalApprovers, numApprovers);
+        assertTrue(timelockActive);
+    }
+    
+    function testFuzz_RecoverTokens(uint256 amount) public {
+        vm.assume(amount > 0 && amount <= type(uint128).max);
+        
+        // Deploy a mock ERC20 token
+        MockERC20 token = new MockERC20();
+        token.mint(address(ec), amount);
+        
+        vm.prank(emergencyRole);
+        bool success = ec.recoverTokens(address(token), amount);
+        
+        assertTrue(success);
+        assertEq(token.balanceOf(admin), amount);
+        assertEq(token.balanceOf(address(ec)), 0);
+    }
+}
+
+// Simple mock ERC20 for testing
+contract MockERC20 {
+    mapping(address => uint256) public balanceOf;
+    
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+    
+    function transfer(address to, uint256 amount) external returns (bool) {
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+}

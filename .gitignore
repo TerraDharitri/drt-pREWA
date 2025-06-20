@@ -1,0 +1,39 @@
+# Dependency directories
+lib/
+node_modules/
+
+# Foundry build artifacts
+out/
+cache/
+broadcast/
+deploy-config/
+
+# Logs
+*.log
+foundry.log
+forge-log.json
+
+# Environment variables
+.env
+.env.*
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Coverage reports
+coverage/
+coverage.json
+lcov.info
+
+# System files
+.DS_Store
+
+# Slither/Static Analysis reports
+slither.db.json
+*.patch
+
+# User-specific files
+/test/fixtures/user.json

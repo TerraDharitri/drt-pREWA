@@ -1,0 +1,288 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.28;
+
+import "forge-std/Test.sol";
+import "../../contracts/core/pREWAToken.sol";
+import "../../contracts/core/TokenStaking.sol";
+import "../../contracts/liquidity/LiquidityManager.sol";
+import "../../contracts/controllers/EmergencyController.sol";
+import "../../contracts/access/AccessControl.sol";
+import "../../contracts/oracle/OracleIntegration.sol";
+import "../../contracts/security/PriceGuard.sol";
+
+contract EmergencyScenarioTest is Test {
+    PREWAToken public token;
+    TokenStaking public staking;
+    LiquidityManager public liquidityManager;
+    EmergencyController public emergencyController;
+    AccessControl public accessControl;
+    OracleIntegration public oracle;
+    PriceGuard public priceGuard;
+    
+    address public admin;
+    address public user1;
+    address public user2;
+    address public emergencyRole;
+    address public pauserRole;
+    
+    function setUp() public {
+        admin = makeAddr("admin");
+        user1 = makeAddr("user1");
+        user2 = makeAddr("user2");
+        emergencyRole = makeAddr("emergencyRole");
+        pauserRole = makeAddr("pauserRole");
+        
+        vm.startPrank(admin);
+        
+        // Deploy core contracts
+        accessControl = new AccessControl();
+        accessControl.initialize(admin);
+        
+        emergencyController = new EmergencyController();
+        emergencyController.initialize(
+            address(accessControl),
+            address(0),
+            3,
+            1 days,
+            admin
+        );
+        
+        token = new PREWAToken();
+        token.initialize(
+            "pREWA Token",
+            "pREWA",
+            18,
+            1000000 ether,
+            10000000 ether,
+            address(accessControl),
+            address(emergencyController),
+            admin
+        );
+        
+        staking = new TokenStaking();
+        staking.initialize(
+            address(token),
+            address(accessControl),
+            address(emergencyController),
+            address(0), // No oracle
+            1000, // 10% APR
+            7 days,
+            admin,
+            10
+        );
+        
+        // Grant roles
+        accessControl.grantRole(accessControl.EMERGENCY_ROLE(), emergencyRole);
+        accessControl.grantRole(accessControl.PAUSER_ROLE(), pauserRole);
+        accessControl.grantRole(accessControl.PARAMETER_ROLE(), admin);
+        
+        // Setup initial state
+        token.addMinter(admin);
+        token.mint(user1, 10000 ether);
+        token.mint(user2, 10000 ether);
+        
+        vm.stopPrank();
+    }
+    
+    function test_EmergencyLevel1_CautionScenario() public {
+        // Scenario: Market volatility detected, set to Caution level
+        vm.prank(emergencyRole);
+        emergencyController.setEmergencyLevel(1);
+        
+        // Verify system still operates normally
+        vm.startPrank(user1);
+        token.approve(address(staking), 1000 ether);
+        
+        // Add a tier first
+        vm.stopPrank();
+        vm.prank(admin);
+        staking.addTier(30 days, 15000, 500); // 30 days, 1.5x multiplier, 5% penalty
+        
+        vm.prank(user1);
+        uint256 positionId = staking.stake(1000 ether, 0);
+        
+        assertEq(staking.totalStaked(), 1000 ether);
+        assertEq(emergencyController.getEmergencyLevel(), 1);
+    }
+    
+    function test_EmergencyLevel2_AlertScenario() public {
+        // Scenario: Security threat detected, escalate to Alert
+        vm.prank(emergencyRole);
+        emergencyController.setEmergencyLevel(2);
+        
+        // Verify emergency withdrawal is enabled
+        (bool enabled, uint256 penalty) = emergencyController.getEmergencyWithdrawalSettings();
+        assertTrue(enabled);
+        assertEq(penalty, 2500); // Default 25%
+        
+        // Test emergency withdrawal in staking
+        vm.startPrank(user1);
+        token.approve(address(staking), 1000 ether);
+        
+        vm.stopPrank();
+        vm.prank(admin);
+        staking.addTier(30 days, 15000, 500);
+        staking.setEmergencyWithdrawal(true, 2500);
+        
+        vm.prank(user1);
+        uint256 positionId = staking.stake(1000 ether, 0);
+        
+        uint256 withdrawn = staking.emergencyWithdraw(positionId);
+        assertEq(withdrawn, 750 ether); // 1000 - 25% penalty
+    }
+    
+    function test_EmergencyLevel3_CriticalScenario() public {
+        // Scenario: Critical security breach, requires multi-approval
+        
+        // Create multiple emergency role holders
+        address[] memory approvers = new address[](3);
+        for (uint i = 0; i < 3; i++) {
+            approvers[i] = makeAddr(string(abi.encodePacked("approver", i)));
+            vm.prank(admin);
+            accessControl.grantRole(accessControl.EMERGENCY_ROLE(), approvers[i]);
+        }
+        
+        // Submit approvals
+        for (uint i = 0; i < 3; i++) {
+            vm.prank(approvers[i]);
+            emergencyController.approveLevel3Emergency();
+        }
+        
+        // Check timelock started
+        (,, address[] memory currentApprovers,, uint256 total, bool timelockActive,) = 
+            emergencyController.getApprovalStatus(0, 10);
+        assertTrue(timelockActive);
+        assertEq(total, 3);
+        
+        // Fast forward past timelock
+        vm.warp(block.timestamp + 1 days + 1);
+        
+        // Execute Level 3 emergency
+        vm.prank(approvers[0]);
+        emergencyController.executeLevel3Emergency();
+        
+        // Verify critical state
+        assertEq(emergencyController.getEmergencyLevel(), 3);
+        assertTrue(emergencyController.isSystemPaused());
+        
+        (bool withdrawalEnabled,) = emergencyController.getEmergencyWithdrawalSettings();
+        assertTrue(withdrawalEnabled);
+    }
+    
+    function test_EmergencyRecovery_FromLevel3() public {
+        // First escalate to Level 3
+        test_EmergencyLevel3_CriticalScenario();
+        
+        // Recovery: Reset to normal
+        vm.prank(emergencyRole);
+        emergencyController.setEmergencyLevel(0);
+        
+        // Verify system recovery
+        assertEq(emergencyController.getEmergencyLevel(), 0);
+        assertFalse(emergencyController.isSystemPaused());
+        
+        (bool withdrawalEnabled,) = emergencyController.getEmergencyWithdrawalSettings();
+        assertFalse(withdrawalEnabled);
+    }
+    
+    function test_EmergencyAwareContractNotification() public {
+        // Register staking contract as emergency aware
+        vm.prank(emergencyRole);
+        emergencyController.registerEmergencyAwareContract(address(staking));
+        
+        // Set emergency level
+        vm.prank(emergencyRole);
+        emergencyController.setEmergencyLevel(2);
+        
+        // Process emergency for staking contract
+        vm.prank(emergencyRole);
+        bool success = emergencyController.processEmergencyForContract(address(staking), 2);
+        assertTrue(success);
+        
+        // Verify staking contract received emergency signal
+        assertTrue(staking.isEmergencyPaused());
+    }
+    
+    function test_TokenBlacklistDuringEmergency() public {
+        // Scenario: Malicious actor detected during emergency
+        vm.prank(emergencyRole);
+        emergencyController.setEmergencyLevel(2);
+        
+        // Blacklist malicious user
+        vm.prank(admin);
+        token.blacklist(user2);
+        
+        // Verify blacklisted user cannot transfer
+        vm.prank(user2);
+        vm.expectRevert();
+        token.transfer(user1, 100 ether);
+        
+        // Verify normal user can still operate
+        vm.prank(user1);
+        bool success = token.transfer(admin, 100 ether);
+        assertTrue(success);
+    }
+    
+    function test_SystemPauseOverride() public {
+        // Test direct system pause by pauser role
+        vm.prank(pauserRole);
+        emergencyController.pauseSystem();
+        
+        assertTrue(emergencyController.isSystemPaused());
+        
+        // Verify contracts respect system pause
+        assertTrue(staking.isEmergencyPaused());
+        assertTrue(token.paused());
+    }
+    
+    function test_ConcurrentEmergencyOperations() public {
+        // Test multiple emergency operations happening simultaneously
+        
+        // Start Level 3 approval process
+        vm.prank(emergencyRole);
+        emergencyController.approveLevel3Emergency();
+        
+        // Meanwhile, set Level 2 emergency
+        vm.prank(emergencyRole);
+        emergencyController.setEmergencyLevel(2);
+        
+        // Pause system
+        vm.prank(pauserRole);
+        emergencyController.pauseSystem();
+        
+        // Verify final state
+        assertEq(emergencyController.getEmergencyLevel(), 2);
+        assertTrue(emergencyController.isSystemPaused());
+        
+        (bool withdrawalEnabled,) = emergencyController.getEmergencyWithdrawalSettings();
+        assertTrue(withdrawalEnabled);
+    }
+    
+    function test_EmergencyTokenRecovery() public {
+        // Deploy mock token and send to emergency controller
+        MockToken mockToken = new MockToken();
+        vm.prank(admin);
+        mockToken.mint(address(emergencyController), 1000 ether);
+        
+        // Recover tokens
+        vm.prank(emergencyRole);
+        bool success = emergencyController.recoverTokens(address(mockToken), 1000 ether);
+        
+        assertTrue(success);
+        assertEq(mockToken.balanceOf(admin), 1000 ether);
+    }
+}
+
+contract MockToken {
+    mapping(address => uint256) public balanceOf;
+    
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+    
+    function transfer(address to, uint256 amount) external returns (bool) {
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+}

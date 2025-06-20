@@ -1,0 +1,356 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.28;
+
+import "forge-std/Test.sol";
+import "../contracts/liquidity/LiquidityManager.sol";
+import "../contracts/core/pREWAToken.sol";
+import "../contracts/access/AccessControl.sol";
+import "../contracts/controllers/EmergencyController.sol";
+import "../contracts/oracle/OracleIntegration.sol";
+import "../contracts/security/PriceGuard.sol";
+import "../contracts/mocks/MockPancakeRouter.sol";
+import "../contracts/mocks/MockPancakeFactory.sol";
+import "../contracts/mocks/MockERC20.sol";
+
+contract LiquidityManagerEdgeCasesTest is Test {
+    LiquidityManager public lm;
+    PREWAToken public token;
+    AccessControl public ac;
+    EmergencyController public ec;
+    OracleIntegration public oracle;
+    PriceGuard public priceGuard;
+    MockPancakeRouter public router;
+    MockPancakeFactory public factory;
+    MockERC20 public otherToken;
+    
+    address public admin;
+    address public user;
+    address public parameterRole;
+    
+    function setUp() public {
+        // Use makeAddr for unique, deterministic addresses per test run
+        admin = makeAddr("admin");
+        user = makeAddr("user");
+        parameterRole = makeAddr("parameterRole");
+        
+        vm.startPrank(admin);
+        
+        // Deploy dependencies without CREATE2 salt for unique addresses in each test run
+        ac = new AccessControl();
+        ac.initialize(admin);
+        
+        ec = new EmergencyController();
+        ec.initialize(address(ac), address(0), 3, 1 days, admin);
+        
+        token = new PREWAToken();
+        token.initialize("pREWA", "pREWA", 18, 1000000 ether, 0, address(ac), address(ec), admin);
+        
+        oracle = new OracleIntegration();
+        oracle.initialize(admin, 3600);
+        
+        priceGuard = new PriceGuard();
+        priceGuard.initialize(admin, address(oracle), address(ec));
+        
+        factory = new MockPancakeFactory();
+        router = new MockPancakeRouter();
+        router.setFactoryReturn(address(factory));
+        
+        otherToken = new MockERC20();
+        otherToken.mockInitialize("Other", "OTHER", 18, admin);
+        
+        // Deploy LiquidityManager
+        lm = new LiquidityManager();
+        lm.initialize(
+            address(token),
+            address(router),
+            address(ac),
+            address(ec),
+            address(oracle),
+            address(priceGuard)
+        );
+        
+        // Grant roles
+        ac.grantRole(ac.PARAMETER_ROLE(), parameterRole);
+        ac.grantRole(ac.DEFAULT_ADMIN_ROLE(), admin);
+        
+        // Setup tokens
+        token.addMinter(admin);
+        token.mint(user, 10000 ether);
+        otherToken.addMinter(admin);
+        otherToken.mintForTest(user, 10000 ether);
+        
+        vm.stopPrank();
+    }
+    
+    function test_RegisterPair_FactoryCreatePairReverts() public {
+        // Setup factory to revert on createPair
+        factory.setShouldRevertCreatePair(true);
+        
+        vm.prank(parameterRole);
+        vm.expectRevert();
+        lm.registerPair(address(otherToken));
+    }
+    
+    function test_RegisterPair_FactoryReturnsZeroAddress() public {
+        // Setup factory to return zero address
+        factory.setCreatePairReturnAddress(address(0));
+        
+        vm.prank(parameterRole);
+        vm.expectRevert();
+        lm.registerPair(address(otherToken));
+    }
+    
+    function test_RegisterPair_GetPairReverts() public {
+        // Setup factory to revert on getPair
+        factory.setShouldRevertGetPair(true);
+        
+        vm.prank(parameterRole);
+        // Should still succeed as it catches the revert and proceeds to createPair
+        bool success = lm.registerPair(address(otherToken));
+        assertTrue(success);
+    }
+    
+    function test_RegisterPair_ConcurrentRegistration() public {
+        // Test protection against concurrent registration
+        vm.startPrank(parameterRole);
+        
+        // This should work
+        lm.registerPair(address(otherToken));
+        
+        // Trying to register same pair again should revert
+        vm.expectRevert();
+        lm.registerPair(address(otherToken));
+        
+        vm.stopPrank();
+    }
+    
+    function test_AddLiquidity_RouterReverts() public {
+        // Register pair first
+        vm.prank(parameterRole);
+        lm.registerPair(address(otherToken));
+        
+        // Setup router to revert on addLiquidity
+        router.setShouldRevertAddLiquidity(true);
+        
+        vm.startPrank(user);
+        token.approve(address(lm), 1000 ether);
+        otherToken.approve(address(lm), 1000 ether);
+        
+        vm.expectRevert();
+        lm.addLiquidity(
+            address(otherToken),
+            1000 ether,
+            1000 ether,
+            900 ether,
+            900 ether,
+            block.timestamp + 1 hours
+        );
+        
+        vm.stopPrank();
+    }
+    
+    function test_AddLiquidityBNB_WETHCallFails() public {
+        // Setup router to fail on addLiquidityETH call
+        router.setShouldRevertAddLiquidityETH(true);
+        
+        vm.prank(user);
+        vm.expectRevert();
+        lm.addLiquidityBNB{value: 1 ether}(
+            1000 ether,
+            900 ether,
+            0.9 ether,
+            block.timestamp + 1 hours
+        );
+    }
+    
+    function test_AddLiquidityBNB_BNBRefundToContract() public {
+        // Register BNB pair
+        vm.prank(parameterRole);
+        lm.registerPair(address(0)); // BNB pair
+        
+        // Deploy a contract that cannot receive BNB
+        NonPayableContract nonPayable = new NonPayableContract();
+        
+        vm.deal(address(nonPayable), 2 ether);
+        vm.prank(admin);
+        token.mint(address(nonPayable), 2000 ether);
+        
+        // Call from contract that cannot receive BNB
+        vm.startPrank(address(nonPayable));
+        token.approve(address(lm), 1000 ether);
+        
+        // This should handle BNB refund failure gracefully
+        lm.addLiquidityBNB{value: 1 ether}(
+            1000 ether,
+            900 ether,
+            0.9 ether,
+            block.timestamp + 1 hours
+        );
+        
+        // Check that pending refund was recorded
+        uint256 pendingRefund = lm.pendingBNBRefunds(address(nonPayable));
+        assertGt(pendingRefund, 0);
+        
+        vm.stopPrank();
+    }
+    
+    function test_RecoverFailedBNBRefund_AdminRecovery() public {
+        // First create a failed refund
+        test_AddLiquidityBNB_BNBRefundToContract();
+        
+        NonPayableContract nonPayable = new NonPayableContract();
+        
+        // Admin recovers the failed refund
+        vm.prank(admin);
+        vm.expectRevert(); // Should fail because contract still cannot receive BNB
+        lm.recoverFailedBNBRefund(address(nonPayable));
+    }
+    
+    function test_SetPairStatus_NoChange() public {
+        // Register pair first
+        vm.prank(parameterRole);
+        lm.registerPair(address(otherToken));
+        
+        // Set status to same value (should be no-op)
+        vm.prank(parameterRole);
+        bool success = lm.setPairStatus(address(otherToken), true);
+        assertTrue(success);
+    }
+    
+    function test_GetPairInfo_NonExistentPair() public {
+        // Query non-existent pair
+        (address pairAddr, address tokenAddr, bool active,,,, ) = lm.getPairInfo(makeAddr("nonexistent"));
+        
+        assertEq(pairAddr, address(0));
+        assertEq(tokenAddr, address(0));
+        assertFalse(active);
+    }
+    
+    function test_GetPairInfo_PairCallsFail() public {
+        // Register pair
+        vm.prank(parameterRole);
+        lm.registerPair(address(otherToken));
+        
+        // Get pair info (should handle failed calls gracefully)
+        (address pairAddr, address tokenAddr, bool active, uint256 r0, uint256 r1, bool isToken0, uint32 ts) = 
+            lm.getPairInfo(address(otherToken));
+        
+        assertNotEq(pairAddr, address(0));
+        assertEq(tokenAddr, address(otherToken));
+        assertTrue(active);
+        // Reserves should be 0 if calls fail
+        assertEq(r0, 0);
+        assertEq(r1, 0);
+    }
+    
+    function test_UpdateRouterAddress_FactoryCallFails() public {
+        // Deploy router that fails on factory() call
+        MockPancakeRouter badRouter = new MockPancakeRouter();
+        badRouter.setShouldRevertFactory(true);
+        
+        vm.prank(admin);
+        vm.expectRevert();
+        lm.setRouterAddress(address(badRouter));
+    }
+    
+    function test_UpdateRouterAddress_FactoryReturnsZero() public {
+        // Deploy router that returns zero factory
+        MockPancakeRouter badRouter = new MockPancakeRouter();
+        badRouter.setFactoryReturn(address(0));
+        
+        vm.prank(admin);
+        vm.expectRevert();
+        lm.setRouterAddress(address(badRouter));
+    }
+    
+    function test_RecoverTokens_ActiveLPToken() public {
+        // Register pair to make LP token active
+        vm.prank(parameterRole);
+        lm.registerPair(address(otherToken));
+        
+        address lpToken = lm.getLPTokenAddress(address(otherToken));
+        
+        // Try to recover active LP token (should fail)
+        vm.prank(admin);
+        vm.expectRevert();
+        lm.recoverTokens(lpToken, 100 ether, admin);
+    }
+    
+    function test_RecoverTokens_InactiveLPToken() public {
+        // Register pair
+        vm.prank(parameterRole);
+        lm.registerPair(address(otherToken));
+        
+        address lpToken = lm.getLPTokenAddress(address(otherToken));
+        
+        // Deactivate pair
+        vm.prank(parameterRole);
+        lm.setPairStatus(address(otherToken), false);
+        
+        // Send some tokens to LM contract
+        MockERC20(lpToken).mintForTest(address(lm), 100 ether);
+        
+        // Now recovery should work
+        vm.prank(admin);
+        bool success = lm.recoverTokens(lpToken, 100 ether, admin);
+        assertTrue(success);
+    }
+    
+    function test_DeadlineValidation_TooFar() public {
+        vm.prank(user);
+        vm.expectRevert();
+        lm.addLiquidityBNB{value: 1 ether}(
+            1000 ether,
+            900 ether,
+            0.9 ether,
+            block.timestamp + 2 days // Too far in future
+        );
+    }
+    
+    function test_DeadlineValidation_Expired() public {
+        vm.prank(user);
+        vm.expectRevert();
+        lm.addLiquidityBNB{value: 1 ether}(
+            1000 ether,
+            900 ether,
+            0.9 ether,
+            block.timestamp - 1 // Already expired
+        );
+    }
+    
+    function test_EmergencyPause_BlocksOperations() public {
+        // Register pair
+        vm.prank(parameterRole);
+        lm.registerPair(address(otherToken));
+        
+        // Trigger emergency pause
+        vm.prank(admin);
+        ac.grantRole(ac.EMERGENCY_ROLE(), admin);
+        vm.prank(admin);
+        ec.setEmergencyLevel(3);
+        
+        // Operations should be blocked
+        vm.startPrank(user);
+        vm.prank(admin);
+        token.approve(address(lm), 1000 ether);
+        vm.prank(admin);
+        otherToken.approve(address(lm), 1000 ether);
+        
+        vm.expectRevert();
+        lm.addLiquidity(
+            address(otherToken),
+            1000 ether,
+            1000 ether,
+            900 ether,
+            900 ether,
+            block.timestamp + 1 hours
+        );
+        
+        vm.stopPrank();
+    }
+}
+
+// Contract that cannot receive BNB
+contract NonPayableContract {
+    // No receive() or fallback() function
+}
