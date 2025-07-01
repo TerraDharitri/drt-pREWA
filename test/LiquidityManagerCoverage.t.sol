@@ -754,7 +754,7 @@ contract LiquidityManagerCoverageTest is Test {
         assertFalse(lm.checkEmergencyStatus(bytes4(0)));
     }
 
-    function test_GetEmergencyController() public {
+    function test_GetEmergencyController() public view {
         assertEq(lm.getEmergencyController(), address(mockEC));
     }
 

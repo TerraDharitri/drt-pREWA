@@ -622,7 +622,7 @@ contract TokenStakingCoverageTest is Test {
     }
 
     // Test comprehensive getter functions
-    function test_GetterFunctions_Comprehensive() public {
+    function test_GetterFunctions_Comprehensive() public view {
         assertEq(tokenStaking.getStakingTokenAddress(), address(pREWAToken));
         assertEq(tokenStaking.getBaseAnnualPercentageRate(), BASE_APR_BPS);
         assertEq(tokenStaking.getMaxPositionsPerUser(), MAX_POSITIONS);

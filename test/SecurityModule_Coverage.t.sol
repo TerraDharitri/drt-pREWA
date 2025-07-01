@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 import "../contracts/security/SecurityModule.sol";
@@ -616,7 +616,7 @@ contract SecurityModuleCoverageTest is Test {
         securityModule.emergencyShutdown(Constants.EMERGENCY_LEVEL_CRITICAL);
     }
 
-    function test_GetEmergencyController_Success() public {
+    function test_GetEmergencyController_Success() public view {
         address controller = securityModule.getEmergencyController();
         assertEq(controller, address(mockEmergencyController));
     }
@@ -663,7 +663,7 @@ contract SecurityModuleCoverageTest is Test {
         securityModule.setOracleIntegration(address(0x123));
     }
 
-    function test_IsEmergencyPaused_False_Normal() public {
+    function test_IsEmergencyPaused_False_Normal() public view {
         bool isPaused = securityModule.isEmergencyPaused();
         assertFalse(isPaused);
     }
@@ -692,7 +692,7 @@ contract SecurityModuleCoverageTest is Test {
 
     // ============ FRONT-RUNNING PREVENTION TESTS ============
 
-    function test_PreventFrontRunning_Success() public {
+    function test_PreventFrontRunning_Success() public view {
         uint8 operationType = 1;
         bytes memory parameters = abi.encode(1000, address(mockToken));
         bytes32 salt = keccak256("test_salt");
@@ -703,7 +703,7 @@ contract SecurityModuleCoverageTest is Test {
         assertTrue(isValid);
     }
 
-    function test_PreventFrontRunning_False_WrongHash() public {
+    function test_PreventFrontRunning_False_WrongHash() public view {
         uint8 operationType = 1;
         bytes memory parameters = abi.encode(1000, address(mockToken));
         bytes32 salt = keccak256("test_salt");
@@ -724,7 +724,7 @@ contract SecurityModuleCoverageTest is Test {
         securityModule.preventFrontRunning(commitHash, 1, "", keccak256("salt"));
     }
 
-    function test_PreventFrontRunning_Success_EmptyParamsWithZeroOperation() public {
+    function test_PreventFrontRunning_Success_EmptyParamsWithZeroOperation() public view {
         bytes32 commitHash = keccak256(abi.encodePacked(address(this), uint8(0), "", keccak256("salt"), block.chainid));
         bool isValid = securityModule.preventFrontRunning(commitHash, 0, "", keccak256("salt"));
         assertTrue(isValid);
@@ -815,11 +815,11 @@ contract SecurityModuleCoverageTest is Test {
         securityModule.setMaxGasForExternalCalls(20000);
         
         // Should still work with low gas
-        bool isValid = securityModule.validatePrice(address(mockToken), 1000);
+        securityModule.validatePrice(address(mockToken), 1000);
         // Result depends on whether oracle call succeeds with low gas
     }
 
-    function test_GetterFunctions_Comprehensive() public {
+    function test_GetterFunctions_Comprehensive() public view {
         assertEq(address(securityModule.accessControl()), address(mockAccessControl));
         assertEq(address(securityModule.emergencyController()), address(mockEmergencyController));
         assertEq(address(securityModule.oracleIntegration()), address(mockOracleIntegration));

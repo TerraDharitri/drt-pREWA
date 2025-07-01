@@ -162,7 +162,7 @@ contract DecimalMathTest is Test {
         this.externalWeightedAverage(100, 200, BPS_MAX + 1);
     }
 
-    function test_weightedAverage_no_overflow() public {
+    function test_weightedAverage_no_overflow() public view {
         this.externalWeightedAverage(type(uint256).max, type(uint256).max, 5000);
     }
 

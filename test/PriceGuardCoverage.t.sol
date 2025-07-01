@@ -413,7 +413,7 @@ contract EmergencyControllerCoverageTest is Test {
         assertEq(level, Constants.EMERGENCY_LEVEL_NORMAL);
     }
 
-    function test_GetEmergencyWithdrawalSettings() public {
+    function test_GetEmergencyWithdrawalSettings() public view {
         (bool enabled, uint256 penalty) = ec.getEmergencyWithdrawalSettings();
         assertFalse(enabled);
         assertEq(penalty, Constants.DEFAULT_PENALTY);
@@ -425,21 +425,21 @@ contract EmergencyControllerCoverageTest is Test {
     }
 
     // Test pagination edge cases
-    function test_GetEmergencyAwareContractsPaginated_OffsetAtEnd() public {
+    function test_GetEmergencyAwareContractsPaginated_OffsetAtEnd() public view {
         (address[] memory page, uint256 total) = ec.getEmergencyAwareContractsPaginated(2, 5);
         assertEq(page.length, 0);
         assertEq(total, 2);
     }
 
-    function test_GetEmergencyAwareContractsPaginated_LimitLargerThanRemaining() public {
+    function test_GetEmergencyAwareContractsPaginated_LimitLargerThanRemaining() public view {
         (address[] memory page, uint256 total) = ec.getEmergencyAwareContractsPaginated(1, 10);
         assertEq(page.length, 1);
         assertEq(page[0], address(awareContract2));
         assertEq(total, 2);
     }
 
-    function test_GetApprovalStatus_NoApprovals() public {
-        (uint256 currentCount, uint256 required, address[] memory page, uint256 nextOffset, uint256 total, bool active, uint256 executeAfter) = ec.getApprovalStatus(0, 10);
+    function test_GetApprovalStatus_NoApprovals() public view {
+        (uint256 currentCount, uint256 required, address[] memory page, , uint256 total, bool active, uint256 executeAfter) = ec.getApprovalStatus(0, 10);
         assertEq(currentCount, 0);
         assertEq(required, 3);
         assertEq(page.length, 0);
@@ -452,7 +452,7 @@ contract EmergencyControllerCoverageTest is Test {
         vm.prank(emergencyRoleHolder1);
         ec.approveLevel3Emergency();
         
-        (uint256 currentCount, uint256 required, address[] memory page, uint256 nextOffset, uint256 total, bool active, uint256 executeAfter) = ec.getApprovalStatus(5, 10);
+        (, , address[] memory page, uint256 nextOffset, uint256 total, , ) = ec.getApprovalStatus(5, 10);
         assertEq(page.length, 0);
         assertEq(nextOffset, 1);
         assertEq(total, 1);

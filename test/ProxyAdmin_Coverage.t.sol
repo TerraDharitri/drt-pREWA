@@ -155,7 +155,7 @@ contract ProxyAdminCoverageTest is Test {
         );
     }
 
-    function test_GetProxyImplementation_Success() public {
+    function test_GetProxyImplementation_Success() public view {
         address impl = proxyAdmin.getProxyImplementation(address(testProxy));
         assertEq(impl, address(mockImplementation));
     }
@@ -170,7 +170,7 @@ contract ProxyAdminCoverageTest is Test {
         proxyAdmin.getProxyImplementation(address(0x123));
     }
 
-    function test_GetProxyAdmin_Success() public {
+    function test_GetProxyAdmin_Success() public view {
         address adminAddr = proxyAdmin.getProxyAdmin(address(testProxy));
         assertEq(adminAddr, address(proxyAdmin));
     }
@@ -519,7 +519,7 @@ contract ProxyAdminCoverageTest is Test {
         proxyAdmin.updateTimelock(Constants.MAX_TIMELOCK_DURATION + 1);
     }
 
-    function test_GetUpgradeProposal_NoProposal() public {
+    function test_GetUpgradeProposal_NoProposal() public view {
         (address impl, uint256 propTime, uint256 timeRem, bool canExec, bool verified, address proposer) = proxyAdmin.getUpgradeProposal(address(testProxy));
         assertEq(impl, address(0));
         assertEq(propTime, 0);
@@ -577,7 +577,7 @@ contract ProxyAdminCoverageTest is Test {
         proxyAdmin.setEmergencyController(address(0x123));
     }
 
-    function test_GetImplementationCount_Zero() public {
+    function test_GetImplementationCount_Zero() public view {
         assertEq(proxyAdmin.getImplementationCount(), 0);
     }
 
@@ -612,7 +612,7 @@ contract ProxyAdminCoverageTest is Test {
         proxyAdmin.emergencyShutdown(3);
     }
 
-    function test_GetterFunctions_Comprehensive() public {
+    function test_GetterFunctions_Comprehensive() public view {
         assertEq(address(proxyAdmin.accessControl()), address(mockAccessControl));
         assertEq(address(proxyAdmin.emergencyController()), address(mockEmergencyController));
         assertEq(proxyAdmin.upgradeTimelock(), 1 days);

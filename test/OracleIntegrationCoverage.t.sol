@@ -477,7 +477,7 @@ contract OracleIntegrationCoverageTest is Test {
         oracle.getLPTokenValue(address(0), 100, 1000, 500, 500);
     }
 
-    function test_GetLPTokenValue_AmountZero() public {
+    function test_GetLPTokenValue_AmountZero() public view {
         uint256 value = oracle.getLPTokenValue(address(mockPair), 0, 1000, 500, 500);
         assertEq(value, 0); // Should return 0 for zero amount
     }
@@ -562,7 +562,7 @@ contract OracleIntegrationCoverageTest is Test {
     //     oracle.getLPTokenValueAlternative(100, 1000, 500, 1e18, 18, 500, 1e6, 6);
     // }
 
-    function test_GetLPTokenValueAlternative_AmountZero() public {
+    function test_GetLPTokenValueAlternative_AmountZero() public view {
         uint256 value = oracle.getLPTokenValueAlternative(0, 1000, 500, 1e18, 18, 500, 1e6, 6);
         assertEq(value, 0);
     }

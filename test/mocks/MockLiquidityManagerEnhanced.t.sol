@@ -11,7 +11,7 @@ contract MockLiquidityManagerEnhancedTest is Test {
         mockLM = new MockLiquidityManager();
     }
     
-    function testFuzz_AddLiquidity(uint256 amount1, uint256 amount2) public {
+    function testFuzz_AddLiquidity(uint256 amount1, uint256 amount2) public view {
         vm.assume(amount1 >= 1 ether && amount1 < type(uint128).max);
         vm.assume(amount2 >= 1 ether && amount2 < type(uint128).max);
         
@@ -38,7 +38,6 @@ contract MockLiquidityManagerEnhancedTest is Test {
     
     function test_BNBRefundSuccess() public {
         // Test successful BNB liquidity addition
-        uint256 balanceBefore = address(this).balance;
         (uint256 amountToken, uint256 amountBNB, uint256 liquidity) =
             mockLM.addLiquidityBNB{value: 1 ether}(100, 90, 0.9 ether, block.timestamp + 1 hours);
         

@@ -271,7 +271,7 @@ contract VestingFactoryCoverageTest is Test {
     }
 
     // New test for pagination edge case
-    function test_GetAllVestingContractsPaginated_OffsetExceedsTotal() public {
+    function test_GetAllVestingContractsPaginated_OffsetExceedsTotal() public view {
         (address[] memory page, uint256 total) = factory.getAllVestingContractsPaginated(10, 5);
         assertEq(page.length, 0);
         assertEq(total, 0);

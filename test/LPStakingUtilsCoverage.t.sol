@@ -48,11 +48,11 @@ contract TestLPStakingUtils is LPStakingUtils {
     }
     
     // Helper functions to exercise modifiers and functionality
-    function checkOnlyOwner() external onlyOwner returns (bool) {
+    function checkOnlyOwner() external view onlyOwner returns (bool) {
         return true;
     }
     
-    function checkOnlyParameterRole() external onlyParameterRole returns (bool) {
+    function checkOnlyParameterRole() external view onlyParameterRole returns (bool) {
         return true;
     }
     
@@ -60,7 +60,7 @@ contract TestLPStakingUtils is LPStakingUtils {
         return true;
     }
     
-    function checkWhenNotPaused() external whenNotPaused returns (bool) {
+    function checkWhenNotPaused() external view whenNotPaused returns (bool) {
         return true;
     }
     
@@ -244,16 +244,15 @@ contract LPStakingUtilsCoverageTest is Test {
     }
     
     // Test getter functions
-    function test_GetOwner_Success() public {
+    function test_GetOwner_Success() public view {
         assertEq(stakingUtils.getOwner(), owner);
     }
     
-    function test_GetAccessControl_Success() public {
+    function test_GetAccessControl_Success() public view {
         assertEq(stakingUtils.getAccessControl(), address(mockAC));
     }
     
-    // Test emergency controller functionality
-    function test_GetEmergencyController_Success() public {
+    function test_GetEmergencyController_Success() public view {
         assertEq(address(stakingUtils.getEmergencyController()), address(mockEC));
     }
     
