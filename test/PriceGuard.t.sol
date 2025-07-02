@@ -1,7 +1,7 @@
 // --- START OF FILE PriceGuard.t.txt ---
 
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.28;
+pragma solidity ^0.8.28;
 
 import "forge-std/Test.sol";
 import "../contracts/security/PriceGuard.sol";

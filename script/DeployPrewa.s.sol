@@ -1,7 +1,7 @@
 // script/DeployPrewa.s.sol
 
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.28;
+pragma solidity ^0.8.28;
 
 import "forge-std/Script.sol";
 import "forge-std/console.sol";
