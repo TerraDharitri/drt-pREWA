@@ -38,6 +38,9 @@ contract PREWAToken is
     /// @notice The contract that controls roles and permissions.
     AccessControl public accessControl;
 
+    /// @notice The fixed maximum supply of the token (1 Billion). This value is immutable.
+    uint256 public constant MAX_SUPPLY = 1_000_000_000 * 1e18;
+
     /**
      * @notice Emitted when the EmergencyController address is changed.
      * @param oldController The previous controller address.
@@ -55,13 +58,12 @@ contract PREWAToken is
    
     /**
      * @notice Initializes the PREWAToken contract.
-     * @dev Sets up the token's properties, initial supply, cap, and administrative contracts.
-     * Can only be called once.
+     * @dev Sets up the token's properties, initial supply, and administrative contracts.
+     * The cap is permanently set to the MAX_SUPPLY constant. Can only be called once.
      * @param name_ The name of the token.
      * @param symbol_ The symbol of the token.
      * @param decimals_ The number of decimals for the token.
      * @param initialSupply_ The amount of tokens to mint to the admin upon initialization.
-     * @param cap_ The maximum total supply for the token. Use 0 for no cap.
      * @param accessControlAddress_ The address of the AccessControl contract.
      * @param emergencyControllerAddress_ The address of the EmergencyController contract.
      * @param admin_ The initial owner and first minter of the token.
@@ -71,7 +73,6 @@ contract PREWAToken is
         string memory symbol_,
         uint8 decimals_,
         uint256 initialSupply_,
-        uint256 cap_,
         address accessControlAddress_,
         address emergencyControllerAddress_,
         address admin_
@@ -96,7 +97,7 @@ contract PREWAToken is
         _name = name_;
         _symbol = symbol_;
         _decimals = decimals_;
-        _cap = cap_;
+        _cap = MAX_SUPPLY;
         
         _transferOwnership(admin_); 
 
@@ -313,15 +314,10 @@ contract PREWAToken is
 
     /**
      * @inheritdoc IpREWAToken
+     * @dev The cap is fixed and cannot be changed. This function will always revert.
      */
-    function setCap(uint256 newCapAmount) external override onlyOwner nonReentrant returns (bool) {
-        if (_cap != 0 && newCapAmount != 0 && newCapAmount < _totalSupply) {
-            revert PREWA_CapLessThanSupply(newCapAmount, _totalSupply);
-        }
-        uint256 oldCap = _cap;
-        _cap = newCapAmount;
-        emit CapUpdated(oldCap, newCapAmount, msg.sender);
-        return true;
+    function setCap(uint256) external view override onlyOwner returns (bool) {
+        revert("pREWAToken: The cap is fixed and cannot be changed.");
     }
 
     /**

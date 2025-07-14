@@ -30,7 +30,6 @@ contract PREWATokenTest is Test {
     string constant TOKEN_SYMBOL = "PREWA";
     uint8 constant TOKEN_DECIMALS = 18;
     uint256 constant INITIAL_SUPPLY = 1_000_000 * (10**TOKEN_DECIMALS);
-    uint256 constant CAP = 10_000_000 * (10**TOKEN_DECIMALS);
 
 
     function setUp() public {
@@ -61,7 +60,6 @@ contract PREWATokenTest is Test {
             TOKEN_SYMBOL,
             TOKEN_DECIMALS,
             INITIAL_SUPPLY,
-            CAP,
             address(mockAC),
             address(mockEC),
             owner
@@ -80,7 +78,7 @@ contract PREWATokenTest is Test {
         assertEq(token.decimals(), TOKEN_DECIMALS);
         assertEq(token.totalSupply(), INITIAL_SUPPLY);
         assertEq(token.balanceOf(owner), INITIAL_SUPPLY);
-        assertEq(token.cap(), CAP);
+        assertEq(token.cap(), token.MAX_SUPPLY());
         assertEq(address(token.accessControl()), address(mockAC));
         assertEq(address(token.emergencyController()), address(mockEC));
         assertEq(token.owner(), owner);
@@ -92,7 +90,7 @@ contract PREWATokenTest is Test {
         PREWAToken logic = new PREWAToken();
         TransparentProxy proxy = new TransparentProxy(address(logic), proxyAdmin, "");
         PREWAToken noSupplyToken = PREWAToken(payable(address(proxy)));
-        noSupplyToken.initialize(TOKEN_NAME, TOKEN_SYMBOL, TOKEN_DECIMALS, 0, CAP, address(mockAC), address(mockEC), owner);
+        noSupplyToken.initialize(TOKEN_NAME, TOKEN_SYMBOL, TOKEN_DECIMALS, 0, address(mockAC), address(mockEC), owner);
         assertEq(noSupplyToken.totalSupply(), 0);
         assertEq(noSupplyToken.balanceOf(owner), 0);
     }
@@ -105,17 +103,17 @@ contract PREWATokenTest is Test {
         proxy = new TransparentProxy(address(logic), proxyAdmin, "");
         newToken = PREWAToken(payable(address(proxy)));
         vm.expectRevert(abi.encodeWithSelector(ZeroAddress.selector, "admin_"));
-        newToken.initialize(TOKEN_NAME, TOKEN_SYMBOL, TOKEN_DECIMALS, 0, CAP, address(mockAC), address(mockEC), address(0));
+        newToken.initialize(TOKEN_NAME, TOKEN_SYMBOL, TOKEN_DECIMALS, 0, address(mockAC), address(mockEC), address(0));
         
         proxy = new TransparentProxy(address(logic), proxyAdmin, "");
         newToken = PREWAToken(payable(address(proxy)));
         vm.expectRevert(PREWA_ACZero.selector);
-        newToken.initialize(TOKEN_NAME, TOKEN_SYMBOL, TOKEN_DECIMALS, 0, CAP, address(0), address(mockEC), owner);
+        newToken.initialize(TOKEN_NAME, TOKEN_SYMBOL, TOKEN_DECIMALS, 0, address(0), address(mockEC), owner);
         
         proxy = new TransparentProxy(address(logic), proxyAdmin, "");
         newToken = PREWAToken(payable(address(proxy)));
         vm.expectRevert(PREWA_ECZero.selector);
-        newToken.initialize(TOKEN_NAME, TOKEN_SYMBOL, TOKEN_DECIMALS, 0, CAP, address(mockAC), address(0), owner);
+        newToken.initialize(TOKEN_NAME, TOKEN_SYMBOL, TOKEN_DECIMALS, 0, address(mockAC), address(0), owner);
     }
     
     function test_Initialize_Revert_InvalidMetadataOrDecimals() public {
@@ -126,27 +124,27 @@ contract PREWATokenTest is Test {
         proxy = new TransparentProxy(address(logic), proxyAdmin, "");
         newToken = PREWAToken(payable(address(proxy)));
         vm.expectRevert(PREWA_NameEmpty.selector);
-        newToken.initialize("", TOKEN_SYMBOL, TOKEN_DECIMALS, 0, CAP, address(mockAC), address(mockEC), owner);
+        newToken.initialize("", TOKEN_SYMBOL, TOKEN_DECIMALS, 0, address(mockAC), address(mockEC), owner);
         
         proxy = new TransparentProxy(address(logic), proxyAdmin, "");
         newToken = PREWAToken(payable(address(proxy)));
         vm.expectRevert(PREWA_SymbolEmpty.selector);
-        newToken.initialize(TOKEN_NAME, "", TOKEN_DECIMALS, 0, CAP, address(mockAC), address(mockEC), owner);
+        newToken.initialize(TOKEN_NAME, "", TOKEN_DECIMALS, 0, address(mockAC), address(mockEC), owner);
 
         proxy = new TransparentProxy(address(logic), proxyAdmin, "");
         newToken = PREWAToken(payable(address(proxy)));
         vm.expectRevert(PREWA_DecimalsZero.selector);
-        newToken.initialize(TOKEN_NAME, TOKEN_SYMBOL, 0, 0, CAP, address(mockAC), address(mockEC), owner);
+        newToken.initialize(TOKEN_NAME, TOKEN_SYMBOL, 0, 0, address(mockAC), address(mockEC), owner);
         
         proxy = new TransparentProxy(address(logic), proxyAdmin, "");
         newToken = PREWAToken(payable(address(proxy)));
         vm.expectRevert(PREWA_DecimalsZero.selector); 
-        newToken.initialize(TOKEN_NAME, TOKEN_SYMBOL, 19, 0, CAP, address(mockAC), address(mockEC), owner);
+        newToken.initialize(TOKEN_NAME, TOKEN_SYMBOL, 19, 0, address(mockAC), address(mockEC), owner);
     }
     
     function test_Initialize_Revert_AlreadyInitialized() public {
         vm.expectRevert("Initializable: contract is already initialized");
-        token.initialize(TOKEN_NAME,TOKEN_SYMBOL,TOKEN_DECIMALS,0,CAP,address(mockAC),address(mockEC),owner);
+        token.initialize(TOKEN_NAME,TOKEN_SYMBOL,TOKEN_DECIMALS,0,address(mockAC),address(mockEC),owner);
     }
     
     function test_Constructor_Runs() public {
@@ -301,24 +299,15 @@ contract PREWATokenTest is Test {
         vm.expectRevert(abi.encodeWithSelector(AmountIsZero.selector));
         token.mint(user1, 0);
         
-        uint256 amountToExceedCap = CAP - INITIAL_SUPPLY + 1;
+        uint256 maxSupply = token.MAX_SUPPLY();
+        uint256 amountToExceedCap = maxSupply - INITIAL_SUPPLY + 1;
         vm.prank(minterUser);
-        vm.expectRevert(abi.encodeWithSelector(CapExceeded.selector, INITIAL_SUPPLY, amountToExceedCap, CAP));
+        vm.expectRevert(abi.encodeWithSelector(CapExceeded.selector, INITIAL_SUPPLY, amountToExceedCap, maxSupply));
         token.mint(user1, amountToExceedCap);
     }
 
     function _add(uint256 a, uint256 b) internal pure returns (uint256) {
         return a + b;
-    }
-
-    function test_Mint_Success_NoCap() public {
-        vm.prank(owner);
-        token.setCap(0); 
-        
-        vm.prank(minterUser);
-        uint256 mintAmount = 10_000_000e18;
-        assertTrue(token.mint(user1, mintAmount));
-        assertEq(token.totalSupply(), INITIAL_SUPPLY + mintAmount);
     }
 
     function test_Burn_Success() public {
@@ -521,23 +510,28 @@ contract PREWATokenTest is Test {
         token.unblacklist(user1);
     }
 
-    function test_SetCap_Success() public {
-        vm.prank(owner);
-        uint256 newCap = CAP * 2;
-        vm.expectEmit(true, false, false, true);
-        emit IpREWAToken.CapUpdated(CAP, newCap, owner);
-        assertTrue(token.setCap(newCap));
-        assertEq(token.cap(), newCap);
-    }
-    function test_SetCap_Revert_LessThanSupply() public {
-        vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(PREWA_CapLessThanSupply.selector, INITIAL_SUPPLY -1, INITIAL_SUPPLY));
-        token.setCap(INITIAL_SUPPLY - 1);
-    }
-    function test_SetCap_ToZero_Success() public {
-        vm.prank(owner);
-        assertTrue(token.setCap(0)); 
-        assertEq(token.cap(), 0);
+    function test_SetCap_Reverts_AsCapIsFixed() public {
+        string memory expectedRevertMessage = "pREWAToken: The cap is fixed and cannot be changed.";
+        bytes memory expectedRevertData = abi.encodeWithSignature("Error(string)", expectedRevertMessage);
+        
+        // CORRECTED: Use vm.startPrank to ensure the msg.sender is set for the try/catch block.
+        vm.startPrank(owner);
+
+        // Test case 1: trying to set a new, larger cap.
+        try token.setCap(token.MAX_SUPPLY() * 2) {
+            fail();
+        } catch (bytes memory lowLevelData) {
+            assertEq(lowLevelData, expectedRevertData, "Revert data for setCap(newValue) is incorrect.");
+        }
+
+        // Test case 2: trying to set the cap to zero.
+        try token.setCap(0) {
+            fail();
+        } catch (bytes memory lowLevelData) {
+            assertEq(lowLevelData, expectedRevertData, "Revert data for setCap(0) is incorrect.");
+        }
+        
+        vm.stopPrank();
     }
 
     function test_RecoverTokens_Success() public {
@@ -695,7 +689,7 @@ contract PREWATokenTest is Test {
         PREWAToken newToken = PREWAToken(payable(address(proxy)));
         
         vm.expectRevert(PREWA_ECZero.selector); 
-        newToken.initialize(TOKEN_NAME, TOKEN_SYMBOL, TOKEN_DECIMALS, 0, CAP, address(mockAC), address(0), owner);
+        newToken.initialize(TOKEN_NAME, TOKEN_SYMBOL, TOKEN_DECIMALS, 0, address(mockAC), address(0), owner);
     }
 
     function test_SetEmergencyController_Success() public {
