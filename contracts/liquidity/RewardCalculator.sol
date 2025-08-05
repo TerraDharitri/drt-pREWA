@@ -29,7 +29,7 @@ library RewardCalculator {
         LPStakingStorage.LPPool memory pool,
         LPStakingStorage.Tier memory tier,
         uint256 currentTime
-    ) public pure returns (uint256 amount) {
+    ) internal pure returns (uint256 amount) {
         if (!position.active) {
             return 0;
         }

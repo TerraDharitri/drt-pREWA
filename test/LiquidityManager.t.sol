@@ -63,7 +63,7 @@ contract LiquidityManagerTest is Test {
         proxyAdmin = makeAddr("proxyAdmin");
 
         mockRouter = new MockPancakeRouter();
-        wbnbAddress = mockRouter.weth();
+        wbnbAddress = mockRouter.WETH();
         mockFactory = new MockPancakeFactory();
         mockRouter.setFactoryReturn(address(mockFactory));
 

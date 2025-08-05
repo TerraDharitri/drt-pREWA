@@ -119,7 +119,7 @@ contract MockPancakeRouter {
         if(shouldRevertFactory) revert("MockRouter: Factory call reverted by mock setting");
         return _factoryAddress;
     }
-    function weth() external view returns (address) {
+    function WETH() external view returns (address) {
         if(shouldRevertWeth) revert("MockRouter: WETH call reverted by mock setting");
         return _wethAddress;
     }

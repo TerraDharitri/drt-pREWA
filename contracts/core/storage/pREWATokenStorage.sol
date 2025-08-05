@@ -3,33 +3,38 @@ pragma solidity ^0.8.28;
 
 /**
  * @title PREWATokenStorage
- * @author Rewa
+ * @author drt-pREWA
  * @notice Defines the storage layout for the PREWAToken contract.
- * @dev This contract is not meant to be deployed. It is inherited by PREWAToken to separate
- * storage variables from logic, which can help in managing upgrades.
+ * @dev This contract is not meant to be deployed directly. It is inherited by PREWAToken to separate
+ * storage variables from logic, following the unstructured storage pattern for upgradeability.
+ * This separation helps prevent storage layout collisions during contract upgrades.
  */
 contract PREWATokenStorage {
-    /// @dev Mapping from an account address to its token balance.
+    /// @notice Mapping from an account address to its token balance.
     mapping(address => uint256) internal _balances;
-    /// @dev Mapping from an owner's address to a spender's address to the approved allowance.
+
+    /// @notice Mapping from an owner's address to a spender's address to the approved allowance.
     mapping(address => mapping(address => uint256)) internal _allowances;
-    /// @dev The total supply of the token.
+
+    /// @notice The total supply of the token.
     uint256 internal _totalSupply;
 
-    /// @dev The name of the token.
+    /// @notice The name of the token (e.g., "Dharitri pREWA").
     string internal _name;
-    /// @dev The symbol of the token.
+
+    /// @notice The symbol of the token (e.g., "pREWA").
     string internal _symbol;
-    /// @dev The number of decimals for the token.
+
+    /// @notice The number of decimals for the token's representation.
     uint8 internal _decimals;
 
-    /// @dev The maximum total supply of the token. A value of 0 means no cap.
+    /// @notice The maximum total supply of the token. A value of 0 indicates no cap.
     uint256 internal _cap;
 
-    /// @dev Mapping from an account address to its blacklisted status.
+    /// @notice Mapping from an account address to its blacklisted status. If true, the address cannot transfer or receive tokens.
     mapping(address => bool) internal _blacklisted;
 
-    /// @dev Mapping from an account address to its minter status.
+    /// @notice Mapping from an account address to its minter status. If true, the address can mint new tokens.
     mapping(address => bool) internal _minters;
     
     /**
@@ -46,9 +51,12 @@ contract PREWATokenStorage {
         bool pending;
     }
 
-    /// @dev Mapping from an account address to its pending blacklist proposal.
+    /// @notice Mapping from an account address to its pending blacklist proposal.
     mapping(address => BlacklistProposal) internal _blacklistProposals;
 
-    /// @dev The duration in seconds of the timelock for blacklisting proposals.
+    /// @notice The duration in seconds of the timelock for blacklisting proposals.
     uint256 internal _blacklistTimelockDuration;
+
+    /// @notice Reserved storage space to allow for future upgrades without storage collisions.
+    uint256[49] private __gap;
 }

@@ -17,7 +17,7 @@ interface IPancakeRouter {
      * @notice Returns the address of the Wrapped Ether (or native currency equivalent, e.g., WBNB) contract.
      * @return The WETH address.
      */
-    function weth() external pure returns (address); 
+    function WETH() external pure returns (address); 
 
     /**
      * @notice Adds liquidity to an ERC20-ERC20 pair.

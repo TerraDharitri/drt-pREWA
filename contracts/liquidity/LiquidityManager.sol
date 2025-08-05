@@ -317,7 +317,7 @@ contract LiquidityManager is
     ) external payable override nonReentrant whenNotEmergency validateDeadline(deadline)
       returns (uint256 actualPREWAAdded, uint256 actualBNBAdded, uint256 lpReceived) {
         address wethAddress;
-        try IPancakeRouter(_routerAddress).weth() returns (address wethReturn) { wethAddress = wethReturn; } catch { revert LM_WETHFail(); }
+        try IPancakeRouter(_routerAddress).WETH() returns (address wethReturn) { wethAddress = wethReturn; } catch { revert LM_WETHFail(); }
 
         bytes32 pairId = _getPairId(wethAddress);
         PairInfo storage pairBNB = _pairs[pairId];
@@ -457,7 +457,7 @@ contract LiquidityManager is
     ) external override nonReentrant whenNotEmergency validateDeadline(deadline)
       returns(uint256 amountToken, uint256 amountBNB) {
         address wethAddress;
-        try IPancakeRouter(_routerAddress).weth() returns (address wethReturn) { wethAddress = wethReturn; } catch { revert LM_WETHFail(); }
+        try IPancakeRouter(_routerAddress).WETH() returns (address wethReturn) { wethAddress = wethReturn; } catch { revert LM_WETHFail(); }
         
         bytes32 pairId = _getPairId(wethAddress);
         PairInfo storage pair = _pairs[pairId];
@@ -487,7 +487,7 @@ contract LiquidityManager is
     function registerPair(address tokenAddress) external override onlyParameterRole returns(bool successFlag) {
         address actualTokenAddress = tokenAddress;
         if (tokenAddress == address(0)) {
-            try IPancakeRouter(_routerAddress).weth() returns(address wethAddr) {
+            try IPancakeRouter(_routerAddress).WETH() returns(address wethAddr) {
                 if (wethAddr == address(0)) revert LM_RouterReturnedZeroAddress("weth");
                 actualTokenAddress = wethAddr;
             } catch { revert LM_WETHFail(); }
@@ -550,7 +550,7 @@ contract LiquidityManager is
      * @inheritdoc ILiquidityManager
      */
     function setPairStatus(address otherToken, bool active) external override onlyParameterRole nonReentrant returns(bool successFlag) {
-        address actualTokenAddress = otherToken == address(0) ? IPancakeRouter(_routerAddress).weth() : otherToken;
+        address actualTokenAddress = otherToken == address(0) ? IPancakeRouter(_routerAddress).WETH() : otherToken;
         bytes32 pairId = _getPairId(actualTokenAddress);
         PairInfo storage pair = _pairs[pairId];
         if (pair.pairAddress == address(0)) revert LM_PairDoesNotExist("Pair not registered for the given token.");
@@ -574,7 +574,7 @@ contract LiquidityManager is
         address pairAddressOut, address tokenAddressOut, bool activeOut,
         uint256 reserve0Out, uint256 reserve1Out, bool pREWAIsToken0Out, uint32 blockTimestampLastOut
     ) {
-        address actualTokenAddress = otherToken == address(0) ? IPancakeRouter(_routerAddress).weth() : otherToken;
+        address actualTokenAddress = otherToken == address(0) ? IPancakeRouter(_routerAddress).WETH() : otherToken;
         bytes32 pairId = _getPairId(actualTokenAddress);
         address queriedPairAddress = _pairs[pairId].pairAddress;
         if (queriedPairAddress == address(0)) {
@@ -605,7 +605,7 @@ contract LiquidityManager is
      * @inheritdoc ILiquidityManager
      */
     function getLPTokenAddress(address otherToken) external view override returns(address lpTokenAddr_) {
-        address actualTokenAddress = otherToken == address(0) ? IPancakeRouter(_routerAddress).weth() : otherToken;
+        address actualTokenAddress = otherToken == address(0) ? IPancakeRouter(_routerAddress).WETH() : otherToken;
         bytes32 pairId = _getPairId(actualTokenAddress);
         lpTokenAddr_ = _pairs[pairId].pairAddress;
         return lpTokenAddr_;
